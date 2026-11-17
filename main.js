@@ -1,0 +1,494 @@
+/* ==========================================================
+   BAF Shaheen College Chattogram — homepage behaviour
+   1. Theme toggle   2. Mobile menu   2b. Active nav link
+   2c. Header shadow on scroll   2d. Entrance reveals & counters
+   3. History slider   4. Newsletter form validation
+   5. Missing-image handling   6. Footer year
+========================================================== */
+
+(function () {
+    "use strict";
+
+    var root = document.documentElement;
+    var THEME_KEY = "baf-theme";
+    var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    var darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+
+
+    /* ======================================================
+       1. THEME
+    ====================================================== */
+
+    function readStoredTheme() {
+        try {
+            var value = localStorage.getItem(THEME_KEY);
+            return value === "light" || value === "dark" ? value : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function storeTheme(theme) {
+        try {
+            localStorage.setItem(THEME_KEY, theme);
+        } catch (e) { /* storage unavailable: theme still applies this visit */ }
+    }
+
+    var themeButton = document.getElementById("themeToggle");
+
+    function applyTheme(theme, animate) {
+        if (animate && !reducedMotion.matches) {
+            root.classList.add("theme-animating");
+            window.setTimeout(function () {
+                root.classList.remove("theme-animating");
+            }, 300);
+        }
+
+        root.setAttribute("data-theme", theme);
+
+        if (themeButton) {
+            themeButton.setAttribute(
+                "aria-label",
+                theme === "dark" ? "Switch to light theme" : "Switch to dark theme"
+            );
+        }
+    }
+
+    function currentTheme() {
+        return root.getAttribute("data-theme") === "dark" ? "dark" : "light";
+    }
+
+    applyTheme(readStoredTheme() || (darkQuery.matches ? "dark" : "light"), false);
+
+    if (themeButton) {
+        themeButton.addEventListener("click", function () {
+            var next = currentTheme() === "dark" ? "light" : "dark";
+            applyTheme(next, true);
+            storeTheme(next);
+        });
+    }
+
+    /* Follow the system setting only while the user has no saved choice */
+    function onSystemThemeChange(event) {
+        if (!readStoredTheme()) {
+            applyTheme(event.matches ? "dark" : "light", true);
+        }
+    }
+
+    if (darkQuery.addEventListener) {
+        darkQuery.addEventListener("change", onSystemThemeChange);
+    } else if (darkQuery.addListener) {
+        darkQuery.addListener(onSystemThemeChange);
+    }
+
+    /* Back/forward cache and other tabs */
+    window.addEventListener("pageshow", function (event) {
+        if (event.persisted) {
+            applyTheme(readStoredTheme() || currentTheme(), false);
+        }
+    });
+
+    window.addEventListener("storage", function (event) {
+        if (event.key === THEME_KEY && (event.newValue === "light" || event.newValue === "dark")) {
+            applyTheme(event.newValue, true);
+        }
+    });
+
+
+    /* ======================================================
+       2. MOBILE MENU
+    ====================================================== */
+
+    var menuButton = document.querySelector(".mobile-menu");
+    var navMenu = document.getElementById("primary-nav");
+    var desktopNav = window.matchMedia("(min-width: 75rem)");
+
+    function setMenu(open, returnFocus) {
+        if (!menuButton || !navMenu) { return; }
+
+        navMenu.classList.toggle("show", open);
+        menuButton.setAttribute("aria-expanded", open ? "true" : "false");
+        menuButton.setAttribute("aria-label", open ? "Close menu" : "Open menu");
+
+        if (!open && returnFocus) { menuButton.focus(); }
+    }
+
+    if (menuButton && navMenu) {
+        menuButton.addEventListener("click", function () {
+            setMenu(menuButton.getAttribute("aria-expanded") !== "true");
+        });
+
+        navMenu.addEventListener("click", function (event) {
+            if (event.target.closest("a")) { setMenu(false); }
+        });
+
+        document.addEventListener("keydown", function (event) {
+            if (event.key === "Escape" &&
+                menuButton.getAttribute("aria-expanded") === "true") {
+                setMenu(false, true);
+            }
+        });
+
+        document.addEventListener("click", function (event) {
+            if (menuButton.getAttribute("aria-expanded") === "true" &&
+                !event.target.closest(".header")) {
+                setMenu(false);
+            }
+        });
+
+        var onDesktopChange = function (event) {
+            if (event.matches) { setMenu(false); }
+        };
+
+        if (desktopNav.addEventListener) {
+            desktopNav.addEventListener("change", onDesktopChange);
+        } else if (desktopNav.addListener) {
+            desktopNav.addListener(onDesktopChange);
+        }
+    }
+
+
+    /* ======================================================
+       2b. ACTIVE NAV LINK (follows the section in view)
+    ====================================================== */
+
+    var navLinks = Array.prototype.slice.call(
+        document.querySelectorAll('.nav-menu a[href^="#"]:not([href="#"])')
+    );
+
+    function setActive(hash) {
+        navLinks.forEach(function (link) {
+            var on = link.getAttribute("href") === hash;
+            link.classList.toggle("active", on);
+            if (on) { link.setAttribute("aria-current", "true"); }
+            else { link.removeAttribute("aria-current"); }
+        });
+    }
+
+    var spyTargets = navLinks
+        .map(function (link) {
+            var id = link.getAttribute("href").slice(1);
+            return { hash: "#" + id, el: document.getElementById(id) };
+        })
+        .filter(function (t) { return t.el; });
+
+    function updateActive() {
+        var headerH = (document.querySelector(".header") || {}).offsetHeight || 0;
+        var atBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4;
+        var current = "#top";
+
+        if (atBottom && spyTargets.length) {
+            current = spyTargets[spyTargets.length - 1].hash;
+        } else {
+            spyTargets.forEach(function (t) {
+                if (t.el.getBoundingClientRect().top <= headerH + 80) { current = t.hash; }
+            });
+        }
+        setActive(current);
+    }
+
+    if (spyTargets.length) {
+        var ticking = false;
+        window.addEventListener("scroll", function () {
+            if (ticking) { return; }
+            ticking = true;
+            window.requestAnimationFrame(function () {
+                updateActive();
+                ticking = false;
+            });
+        }, { passive: true });
+        updateActive();
+    }
+
+
+    /* ======================================================
+       2c. HEADER SHADOW ON SCROLL
+    ====================================================== */
+
+    var siteHeader = document.querySelector(".header");
+
+    if (siteHeader) {
+        var updateHeaderState = function () {
+            siteHeader.classList.toggle("is-scrolled", window.scrollY > 8);
+        };
+
+        window.addEventListener("scroll", updateHeaderState, { passive: true });
+        updateHeaderState();
+    }
+
+
+    /* ======================================================
+       2d. ENTRANCE REVEALS & COUNT-UP
+       Hidden states apply only when JS runs and motion is
+       allowed, so content is never left invisible.
+    ====================================================== */
+
+    if (!reducedMotion.matches) {
+        root.classList.add("motion-ready");
+
+        var revealNodes = Array.prototype.slice.call(
+            document.querySelectorAll("[data-reveal], [data-count]")
+        );
+        var counterSets = [];
+
+        /* Stagger: each child receives an index that drives its delay */
+        var prepareStagger = function (node) {
+            Array.prototype.forEach.call(node.children, function (child, i) {
+                child.style.setProperty("--reveal-index", i);
+            });
+        };
+
+        /* Counter: keep the real figure, start every number at zero */
+        var prepareCounter = function (node) {
+            var items = [];
+
+            Array.prototype.forEach.call(node.querySelectorAll("strong"), function (el) {
+                var match = /^(\d+)(.*)$/.exec(el.textContent.trim());
+
+                if (match) {
+                    items.push({ el: el, target: parseInt(match[1], 10), suffix: match[2] });
+                    el.textContent = "0" + match[2];
+                }
+            });
+
+            return items;
+        };
+
+        var runCounter = function (items) {
+            var DURATION = 1400;
+
+            items.forEach(function (item) {
+                var start = null;
+
+                var step = function (now) {
+                    if (start === null) { start = now; }
+
+                    var t = Math.min((now - start) / DURATION, 1);
+                    var eased = 1 - Math.pow(1 - t, 3);
+
+                    item.el.textContent = Math.round(item.target * eased) + item.suffix;
+
+                    if (t < 1) { window.requestAnimationFrame(step); }
+                };
+
+                window.requestAnimationFrame(step);
+            });
+        };
+
+        var activate = function (node) {
+            node.classList.add("is-in");
+
+            counterSets.forEach(function (set) {
+                if (set.node === node) { runCounter(set.items); }
+            });
+        };
+
+        revealNodes.forEach(function (node) {
+            if (node.getAttribute("data-reveal") === "stagger") { prepareStagger(node); }
+
+            if (node.hasAttribute("data-count")) {
+                counterSets.push({ node: node, items: prepareCounter(node) });
+            }
+        });
+
+        if ("IntersectionObserver" in window) {
+            var revealObserver = new IntersectionObserver(function (entries, observer) {
+                entries.forEach(function (entry) {
+                    if (entry.isIntersecting) {
+                        activate(entry.target);
+                        observer.unobserve(entry.target);
+                    }
+                });
+            }, { threshold: 0.2, rootMargin: "0px 0px -6% 0px" });
+
+            revealNodes.forEach(function (node) { revealObserver.observe(node); });
+        } else {
+            revealNodes.forEach(function (node) { activate(node); });
+        }
+    }
+
+
+    /* ======================================================
+       3. HISTORY SLIDER
+    ====================================================== */
+
+    var mainImage = document.getElementById("historySliderImage");
+    var dots = Array.prototype.slice.call(document.querySelectorAll(".history-dot"));
+    var middleImage = document.querySelector(".history-card-middle img");
+    var backImage = document.querySelector(".history-card-back img");
+    var toggleButton = document.getElementById("historyToggle");
+    var cycleBox = document.getElementById("autoCycle");
+    var cycleText = document.getElementById("autoCycleText");
+
+    if (mainImage && dots.length) {
+        var sources = dots.map(function (dot) { return dot.getAttribute("data-image"); });
+        var total = sources.length;
+        var current = 0;
+        var timer = null;
+        var fadeTimer = null;
+        var userPaused = reducedMotion.matches; /* no autoplay if motion is reduced */
+        var INTERVAL = 4000;
+
+        var setPreviews = function (index) {
+            if (middleImage) { middleImage.src = sources[(index + 1) % total]; }
+            if (backImage) { backImage.src = sources[(index + 2) % total]; }
+        };
+
+        var showImage = function (index) {
+            index = (index + total) % total;
+            current = index;
+
+            dots.forEach(function (dot, i) {
+                var active = i === index;
+                dot.classList.toggle("active", active);
+                if (active) {
+                    dot.setAttribute("aria-current", "true");
+                } else {
+                    dot.removeAttribute("aria-current");
+                }
+            });
+
+            window.clearTimeout(fadeTimer);
+
+            var swap = function () {
+                mainImage.classList.remove("is-missing");
+                mainImage.onload = mainImage.onerror = function () {
+                    mainImage.classList.remove("changing");
+                };
+                mainImage.src = sources[index];
+                mainImage.alt = "Bangladesh Air Force Shaheen College Chattogram, photo " +
+                    (index + 1) + " of " + total;
+                setPreviews(index);
+            };
+
+            if (reducedMotion.matches) {
+                swap();
+            } else {
+                mainImage.classList.add("changing");
+                fadeTimer = window.setTimeout(swap, 300);
+            }
+        };
+
+        var stopTimer = function () {
+            window.clearInterval(timer);
+            timer = null;
+        };
+
+        var startTimer = function () {
+            stopTimer();
+            if (userPaused || document.hidden) { return; }
+            timer = window.setInterval(function () {
+                showImage(current + 1);
+            }, INTERVAL);
+        };
+
+        var updateStatus = function () {
+            if (cycleBox) { cycleBox.classList.toggle("is-paused", userPaused); }
+            if (cycleText) {
+                cycleText.textContent = userPaused ? "Auto cycle paused" : "Auto cycle active";
+            }
+            if (toggleButton) {
+                toggleButton.textContent = userPaused ? "Play" : "Pause";
+                toggleButton.setAttribute(
+                    "aria-label",
+                    userPaused ? "Play photo slideshow" : "Pause photo slideshow"
+                );
+            }
+        };
+
+        dots.forEach(function (dot, index) {
+            dot.addEventListener("click", function () {
+                showImage(index);
+                startTimer(); /* restart the countdown after manual navigation */
+            });
+        });
+
+        if (toggleButton) {
+            toggleButton.addEventListener("click", function () {
+                userPaused = !userPaused;
+                updateStatus();
+                startTimer();
+            });
+        }
+
+        document.addEventListener("visibilitychange", startTimer);
+
+        setPreviews(0);
+        updateStatus();
+        startTimer();
+    }
+
+
+    /* ======================================================
+       4. NEWSLETTER (frontend validation only — no backend)
+    ====================================================== */
+
+    var newsletterForm = document.getElementById("newsletterForm");
+    var newsletterEmail = document.getElementById("newsletterEmail");
+    var newsletterMessage = document.getElementById("newsletterMessage");
+
+    if (newsletterForm && newsletterEmail && newsletterMessage) {
+        newsletterForm.addEventListener("submit", function (event) {
+            event.preventDefault();
+
+            var value = newsletterEmail.value.trim();
+            var valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
+            newsletterMessage.classList.remove("is-error", "is-info");
+            void newsletterMessage.offsetWidth; /* restart the fade-in on every submit */
+
+            if (!valid) {
+                newsletterEmail.setAttribute("aria-invalid", "true");
+
+                newsletterEmail.classList.remove("is-shaking");
+                void newsletterEmail.offsetWidth; /* restart the shake on repeat errors */
+                newsletterEmail.classList.add("is-shaking");
+
+                newsletterMessage.classList.add("is-error");
+                newsletterMessage.textContent = value
+                    ? "Please enter a valid email address."
+                    : "Please enter your email address.";
+                newsletterEmail.focus();
+                return;
+            }
+
+            newsletterEmail.removeAttribute("aria-invalid");
+            newsletterMessage.classList.add("is-info");
+            newsletterMessage.textContent =
+                "Email format looks good, but newsletter sign-up is not connected yet, so nothing was submitted.";
+        });
+
+        newsletterEmail.addEventListener("input", function () {
+            newsletterEmail.removeAttribute("aria-invalid");
+        });
+    }
+
+
+    /* ======================================================
+       5. MISSING IMAGES — fail quietly, keep layout stable
+    ====================================================== */
+
+    Array.prototype.forEach.call(document.images, function (img) {
+        var markMissing = function () { img.classList.add("is-missing"); };
+
+        if (img.complete && img.naturalWidth === 0 && img.getAttribute("src")) {
+            markMissing();
+        }
+        img.addEventListener("error", markMissing);
+        img.addEventListener("load", function () {
+            img.classList.remove("is-missing");
+        });
+    });
+
+
+    /* ======================================================
+       6. FOOTER YEAR — keeps the copyright line current
+    ====================================================== */
+
+    var yearEl = document.getElementById("currentYear");
+
+    if (yearEl) {
+        yearEl.textContent = String(new Date().getFullYear());
+    }
+
+})();
